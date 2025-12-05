@@ -1,5 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
 <head>
   <meta charset="UTF-8" />
   <title>과탑의 비밀 노트</title>
@@ -269,6 +271,33 @@
         flex-wrap: wrap;
       }
     }
+
+      .output-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      
+      .btn-icon {
+        border: none;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        cursor: pointer;
+        background: #f4f4ff;
+        color: #555;
+        border: 1px solid #d2d2ff;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+      
+      .btn-icon:hover {
+        background: #ececff;
+      }
+    
   </style>
 </head>
 <body>
@@ -393,18 +422,40 @@
             <span class="badge">강의 정리 노트 &amp; 문제지</span>
           </div>
 
-          <div class="output-grid">
-            <div class="output-box">
-              <h2>강의 정리 노트</h2>
-              <textarea
-                id="noteOutput"
-                readonly
-                placeholder="여기에 AI가 정리한 강의 노트가 표시됩니다."
-              ></textarea>
-            </div>
+<div class="output-grid">
+  <!-- 강의 정리 노트 박스 -->
+  <div class="output-box">
+    <div class="output-header">
+      <h2>강의 정리 노트</h2>
+      <button
+        type="button"
+        class="btn-icon"
+        onclick="downloadNotePDF()"
+        title="강의 정리 노트를 PDF로 저장"
+      >
+        📄 PDF
+      </button>
+    </div>
+    <textarea
+      id="noteOutput"
+      readonly
+      placeholder="여기에 AI가 정리한 강의 노트가 표시됩니다."
+    ></textarea>
+  </div>
 
-            <div class="output-box">
-              <h2>문제지</h2>
+            <!-- 문제지 박스 -->
+          <div class="output-box">
+              <div class="output-header">
+                <h2>문제지</h2>
+                <button
+                  type="button"
+                  class="btn-icon"
+                  onclick="downloadQuizPDF()"
+                  title="문제지를 PDF로 저장"
+                >
+                  📄 PDF
+                </button>
+              </div>
               <textarea
                 id="quizOutput"
                 readonly
@@ -511,9 +562,91 @@
       document.getElementById("noteOutput").value = "";
       document.getElementById("quizOutput").value = "";
     }
+
+
+  // 출력 영역 초기화
+  function clearOutputs() {
+    document.getElementById("noteOutput").value = "";
+    document.getElementById("quizOutput").value = "";
+  }
+
+  // 공통 PDF 생성 헬퍼 함수
+  function createPdfFromText(text, title, filename) {
+    const { jsPDF } = window.jspdf || {};
+    if (!jsPDF) {
+      alert("PDF 라이브러리를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.");
+      return;
+    }
+
+    if (!text || !text.trim()) {
+      alert("먼저 내용을 생성한 뒤에 PDF로 저장해 주세요!");
+      return;
+    }
+
+    const doc = new jsPDF({
+      orientation: "p",
+      unit: "mm",
+      format: "a4",
+    });
+
+    // 제목
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.text(title, 10, 20);
+
+    // 본문
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+
+    const marginLeft = 10;
+    const marginTop = 30;
+    const lineHeight = 6;
+    const maxWidth = 190;
+
+    const lines = doc.splitTextToSize(text, maxWidth);
+    let cursorY = marginTop;
+
+    lines.forEach((line) => {
+      if (cursorY > 280) {
+        doc.addPage();
+        cursorY = 20;
+      }
+      doc.text(line, marginLeft, cursorY);
+      cursorY += lineHeight;
+    });
+
+    doc.save(filename);
+  }
+
+  // 강의 정리 노트 PDF 다운로드
+  function downloadNotePDF() {
+    const noteText = document.getElementById("noteOutput").value;
+    const subjectName =
+      document.getElementById("subjectName").value.trim() || "과탑의_비밀_노트";
+
+    const title = `과탑의 비밀 노트 - ${subjectName}`;
+    const fileName = subjectName.replace(/\s+/g, "_") + "_요약.pdf";
+
+    createPdfFromText(noteText, title, fileName);
+  }
+
+  // 문제지 PDF 다운로드
+  function downloadQuizPDF() {
+    const quizText = document.getElementById("quizOutput").value;
+    const subjectName =
+      document.getElementById("subjectName").value.trim() || "과탑의_비밀_노트";
+
+    const title = `과탑의 비밀 노트 - ${subjectName} (문제지)`;
+    const fileName = subjectName.replace(/\s+/g, "_") + "_문제지.pdf";
+
+    createPdfFromText(quizText, title, fileName);
+  }
+
+    
   </script>
 </body>
 </html>
+
 
 
 
