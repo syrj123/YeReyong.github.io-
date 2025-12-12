@@ -571,8 +571,12 @@
   
     // ✅ 한글 폰트 등록
     doc.addFileToVFS("NanumGothic.ttf", fontBase64);
-    doc.addFont("NanumGothic.ttf", "NanumGothic", "normal");
+    
+    // ✅ 반드시 Identity-H 추가 (유니코드/CJK용)
+    doc.addFont("NanumGothic.ttf", "NanumGothic", "normal", "Identity-H");
+    
     doc.setFont("NanumGothic", "normal");
+
   
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -650,6 +654,7 @@
   </script>
 </body>
 </html>
+
 
 
 
