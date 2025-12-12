@@ -598,7 +598,26 @@
         y += lineH;
       }
     };
-  
+
+    const cleanLine = (s) => {
+      let t = (s || "").trim();
+    
+      // 마크다운 헤더 제거 (####, ### 등)
+      t = t.replace(/^#{1,6}\s+/, "");
+    
+      // 불필요한 태그/기호 정리
+      t = t.replace(/^•\s+/, "");           // 앞에 붙은 • 제거 (중복 방지)
+    
+      // [DESC] 제거
+      t = t.replace(/^\[DESC\]\s*/, "");
+    
+      // "정의: 정의:" 같은 중복 라벨 정리
+      t = t.replace(/^(정의|특징|예시|비교|주의|활용)\s*:\s*\1\s*:/, "$1:");
+    
+      return t;
+    };
+    
+    
     // ====== 문서 제목 ======
     doc.setFontSize(18);
     doc.setTextColor(20, 20, 20);
@@ -800,6 +819,7 @@
   </script>
 </body>
 </html>
+
 
 
 
