@@ -552,70 +552,144 @@
 
   // 공통 PDF 생성 헬퍼 함수 (✅ 한글 폰트 임베드)
   function createPdfFromText(text, title, filename) {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    const { jsPDF } = window.jspdf || {};
+    if (!jsPDF) {
+      alert("PDF 라이브러리를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.");
+      return;
+    }
+    if (!text || !text.trim()) {
+      alert("먼저 내용을 생성한Attach 뒤에 PDF로 저장해 주세요!");
+      return;
+    }
   
-    // 한글 폰트
-    doc.addFileToVFS("NanumGothic.ttf", window.__KOR_FONT_BASE64__);
+    const fontBase64 = window.__KOR_FONT_BASE64__;
+    if (!fontBase64) {
+      alert("한글 폰트가 로드되지 않았습니다. NanumGothic.base64.js 로드를 확인해 주세요!");
+      return;
+    }
+  
+    const doc = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
+  
+    // ✅ 한글 폰트 등록 (유니코드)
+    doc.addFileToVFS("NanumGothic.ttf", fontBase64);
     doc.addFont("NanumGothic.ttf", "NanumGothic", "normal", "Identity-H");
-    doc.setFont("NanumGothic");
-  
-    let y = 20;
-  
-    // ===== 제목 =====
-    doc.setFontSize(18);
     doc.setFont("NanumGothic", "normal");
-    doc.text(title, 10, y);
-    y += 12;
   
-    const lines = text.split("\n");
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
   
-    lines.forEach((line) => {
-      if (y > 280) {
+    const M = { L: 14, R: 14, T: 18, B: 18 };
+    const contentW = pageW - M.L - M.R;
+  
+    const ensurePage = (need = 0) => {
+      if (y + need > pageH - M.B) {
         doc.addPage();
-        y = 20;
+        y = M.T;
+      }
+    };
+  
+    const drawWrapped = (line, x, maxW, lineH) => {
+      const arr = doc.splitTextToSize(line, maxW);
+      for (const w of arr) {
+        ensurePage(lineH);
+        doc.text(w, x, y);
+        y += lineH;
+      }
+    };
+  
+    let y = M.T;
+  
+    // ====== 문서 제목 ======
+    doc.setFontSize(18);
+    doc.setTextColor(20, 20, 20);
+    drawWrapped(title, M.L, contentW, 8);
+    y += 6;
+  
+    // ====== 본문 파싱 ======
+    const rawLines = text.replace(/\r\n/g, "\n").split("\n");
+  
+    // “빈 줄”이 없더라도, 특정 패턴에서 자동으로 문단 여백을 줌
+    const isSection = (s) => /^\[\d+\]\s*/.test(s.trim());
+    const isBullet = (s) => /^[*•-]\s+/.test(s.trim());
+    const isSubKey = (s) => /^(정의|특징|예시|주의|활용|비교|장점|단점)\s*[:：]/.test(s.trim());
+  
+    const SECTION_GAP_BEFORE = 6;
+    const SECTION_GAP_AFTER = 4;
+  
+    const PARA_GAP = 3;      // 문단 간 간격
+    const BULLET_GAP = 1.5;  // 목록 항목 간 간격
+  
+    for (let i = 0; i < rawLines.length; i++) {
+      const line = (rawLines[i] || "").trimEnd();
+      const t = line.trim();
+  
+      // 완전 빈 줄이면 조금 띄우기
+      if (!t) {
+        y += 2;
+        continue;
       }
   
-      // [1] [2] 같은 파트 제목
-      if (/^\[\d+\]/.test(line)) {
-        y += 6;
-        doc.setFontSize(14);
-        doc.setTextColor(80, 40, 120); // 보라톤
-        doc.text(line, 10, y);
-        y += 8;
+      // [1] 같은 대제목
+      if (isSection(t)) {
+        y += SECTION_GAP_BEFORE;
+        ensurePage(12);
+  
+        doc.setFontSize(14.5);
+        doc.setTextColor(85, 55, 150); // 보라톤
+        drawWrapped(t, M.L, contentW, 7);
+  
         doc.setTextColor(0, 0, 0);
+        y += SECTION_GAP_AFTER;
+        continue;
       }
   
-      // 소제목 (- , ● 등)
-      else if (/^[-●]/.test(line.trim())) {
-        doc.setFontSize(11.5);
-        doc.setTextColor(60, 60, 60);
-        doc.text(line, 14, y);
-        y += 6;
+      // "정의:", "특징:" 같은 소키워드 라인
+      if (isSubKey(t)) {
+        ensurePage(8);
+        doc.setFontSize(11.8);
+        doc.setTextColor(40, 40, 40);
+        drawWrapped("▸ " + t, M.L + 4, contentW - 4, 6);
         doc.setTextColor(0, 0, 0);
+        y += PARA_GAP;
+        continue;
       }
   
-      // 본문
-      else if (line.trim() !== "") {
-        doc.setFontSize(10.5);
-        const wrapped = doc.splitTextToSize(line, 180);
-        wrapped.forEach((w) => {
-          if (y > 280) {
-            doc.addPage();
-            y = 20;
-          }
-          doc.text(w, 18, y);
-          y += 5.5;
-        });
+      // 목록(*, -, •) — 들여쓰기 + 항목 간격
+      if (isBullet(t)) {
+        ensurePage(8);
+        doc.setFontSize(11);
+  
+        // 기호 제거하고 내용만 뽑기
+        const bulletText = t.replace(/^[*•-]\s+/, "");
+  
+        // 목록 앞에 '•'를 통일해서 찍기 + 들여쓰기
+        doc.setTextColor(0, 0, 0);
+        drawWrapped("• " + bulletText, M.L + 6, contentW - 6, 5.6);
+  
+        y += BULLET_GAP;
+        continue;
       }
   
-      else {
-        y += 3; // 빈 줄
-      }
-    });
+      // 일반 문단 — 줄간격/여백
+      doc.setFontSize(10.8);
+      doc.setTextColor(15, 15, 15);
+      drawWrapped(t, M.L + 4, contentW - 4, 5.4);
+  
+      y += PARA_GAP;
+    }
+  
+    // ✅ 페이지 번호(선택): 보기 좋아짐
+    const pageCount = doc.getNumberOfPages();
+    for (let p = 1; p <= pageCount; p++) {
+      doc.setPage(p);
+      doc.setFontSize(9);
+      doc.setTextColor(120, 120, 120);
+      doc.text(`${p} / ${pageCount}`, pageW - M.R, pageH - 10, { align: "right" });
+    }
   
     doc.save(filename);
   }
+
 
 
 
@@ -647,6 +721,7 @@
   </script>
 </body>
 </html>
+
 
 
 
