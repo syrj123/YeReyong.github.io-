@@ -487,75 +487,48 @@
     // 폼 제출 시 호출되는 함수 (필수: register 함수 내부에 fetch POST 포함)
     function register(event) {
       event.preventDefault();
-
+    
       const subjectName = document.getElementById("subjectName").value.trim();
       const profStyle = document.getElementById("profStyle").value.trim();
-      const questionCount = parseInt(
-        document.getElementById("questionCount").value,
-        10
-      );
+      const questionCount = parseInt(document.getElementById("questionCount").value, 10);
       const questionType =
-        document.querySelector('input[name="questionType"]:checked')?.value ||
-        "";
-
+        document.querySelector('input[name="questionType"]:checked')?.value || "";
+    
       const lectureFileInput = document.getElementById("lectureFile");
-      const lectureFileName =
-        lectureFileInput.files && lectureFileInput.files.length > 0
-          ? lectureFileInput.files[0].name
-          : null;
-
+      const file = lectureFileInput.files && lectureFileInput.files.length > 0
+        ? lectureFileInput.files[0]
+        : null;
+    
       const noteOutput = document.getElementById("noteOutput");
       const quizOutput = document.getElementById("quizOutput");
-
-      // 서버로 보낼 JSON 데이터 구성
-      const payload = {
-        subjectName,
-        profStyle,
-        questionCount,
-        questionType,
-        lectureFileName, // 현재는 파일 이름만 전송 (실제 구현 시 파일 내용 처리 필요)
-      };
-
-      // ★ 필수 요구 사항: fetch + POST + JSON.stringify 구조
+    
+      const formData = new FormData();
+      formData.append("subjectName", subjectName);
+      formData.append("profStyle", profStyle);
+      formData.append("questionCount", String(questionCount));
+      formData.append("questionType", questionType);
+      if (file) formData.append("lectureFile", file); // ✅ 파일 자체 업로드
+    
       fetch(SERVER_URL, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
+        body: formData,
       })
         .then((response) => {
-          // 서버 연결 후에는 여기서 실제 응답을 처리
-          if (!response.ok) {
-            throw new Error("Network response was not ok");
-          }
+          if (!response.ok) throw new Error("Network response was not ok");
           return response.json();
         })
         .then((data) => {
-          // 예: 백엔드에서 { note: "...", questions: "..." } 형태로 전달된다고 가정
-          noteOutput.value =
-            data.note || "서버에서 전달된 강의 정리 노트가 여기에 표시됩니다.";
-          quizOutput.value =
-            data.questions || "서버에서 전달된 문제지가 여기에 표시됩니다.";
+          noteOutput.value = data.note || "노트가 비어 있습니다.";
+          quizOutput.value = data.questions || "문제가 비어 있습니다.";
         })
         .catch((error) => {
           console.error("통신 오류:", error);
-
-          noteOutput.value =
-            "서버 통신 중 오류가 발생했습니다.\n" +
-            "브라우저 개발자 도구(F12)의 Console과 백엔드 로그를 확인해 주세요.";
-
-          quizOutput.value =
-            "서버 통신 중 오류가 발생했습니다.\n" +
-            "문제 생성 결과를 가져오지 못했습니다.";
-          
-          alert(
-            "AI 서버와 통신 중 오류가 발생했습니다.\n" +
-            "조금 뒤에 다시 시도하거나, 백엔드 로그를 확인해 주세요."
-          );
+          noteOutput.value = "서버 통신 중 오류가 발생했습니다.\nConsole/백엔드 로그 확인";
+          quizOutput.value = "서버 통신 중 오류가 발생했습니다.\n문제 생성 결과 없음";
+          alert("AI 서버와 통신 중 오류가 발생했습니다.\n백엔드 로그를 확인해 주세요.");
         });
-
     }
+
 
     // 출력 영역 초기화
     function clearOutputs() {
@@ -646,6 +619,7 @@
   </script>
 </body>
 </html>
+
 
 
 
