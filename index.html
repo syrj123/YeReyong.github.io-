@@ -6,6 +6,13 @@
   <meta charset="UTF-8" />
   <title>과탑의 비밀 노트</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- ✅ jsPDF를 head 안으로 -->
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <!-- ✅ 폰트 base64 스크립트도 head에서 defer로 -->
+  <script defer src="./NanumGothic.base64.js"></script>
+  
   <style>
     * {
       box-sizing: border-box;
@@ -301,7 +308,6 @@
   </style>
 </head>
 <body>
-  <script src="NanumGothic.base64.js"></script>
   <div class="app-container">
     <header>
       <h1>과탑의 비밀 노트<br /><span>Lecture Note &amp; Quiz Generator</span></h1>
@@ -654,6 +660,7 @@
   </script>
 </body>
 </html>
+
 
 
 
