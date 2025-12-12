@@ -301,6 +301,7 @@
   </style>
 </head>
 <body>
+  <script src="fonts/NanumGothic.base64.js"></script>
   <div class="app-container">
     <header>
       <h1>과탑의 비밀 노트<br /><span>Lecture Note &amp; Quiz Generator</span></h1>
@@ -543,53 +544,83 @@
     document.getElementById("quizOutput").value = "";
   }
 
-  // 공통 PDF 생성 헬퍼 함수
+  // 공통 PDF 생성 헬퍼 함수 (✅ 한글 폰트 임베드)
   function createPdfFromText(text, title, filename) {
     const { jsPDF } = window.jspdf || {};
     if (!jsPDF) {
       alert("PDF 라이브러리를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.");
       return;
     }
-
+  
     if (!text || !text.trim()) {
       alert("먼저 내용을 생성한 뒤에 PDF로 저장해 주세요!");
       return;
     }
-
+  
+    const fontBase64 = window.__KOR_FONT_BASE64__;
+    if (!fontBase64) {
+      alert("한글 폰트가 로드되지 않았습니다. fonts/NanumGothic.base64.js 추가/경로를 확인해 주세요.");
+      return;
+    }
+  
     const doc = new jsPDF({
       orientation: "p",
       unit: "mm",
       format: "a4",
     });
-
+  
+    // ✅ 한글 폰트 등록
+    doc.addFileToVFS("NanumGothic.ttf", fontBase64);
+    doc.addFont("NanumGothic.ttf", "NanumGothic", "normal");
+    doc.setFont("NanumGothic", "normal");
+  
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+  
+    const marginLeft = 12;
+    const marginRight = 12;
+    const marginTop = 18;
+    const marginBottom = 18;
+    const contentWidth = pageWidth - marginLeft - marginRight;
+  
     // 제목
-    doc.setFont("helvetica", "bold");
     doc.setFontSize(16);
-    doc.text(title, 10, 20);
-
-    // 본문
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
-
-    const marginLeft = 10;
-    const marginTop = 30;
-    const lineHeight = 6;
-    const maxWidth = 190;
-
-    const lines = doc.splitTextToSize(text, maxWidth);
-    let cursorY = marginTop;
-
-    lines.forEach((line) => {
-      if (cursorY > 280) {
-        doc.addPage();
-        cursorY = 20;
-      }
-      doc.text(line, marginLeft, cursorY);
-      cursorY += lineHeight;
+    const titleLines = doc.splitTextToSize(title, contentWidth);
+    let y = marginTop;
+    titleLines.forEach((line) => {
+      doc.text(line, marginLeft, y);
+      y += 7;
     });
-
+  
+    y += 4;
+  
+    // 본문
+    doc.setFontSize(11);
+    const normalized = text.replace(/\r\n/g, "\n");
+    const paragraphs = normalized.split("\n");
+  
+    const lineHeight = 5.5;
+    const bottomLimit = pageHeight - marginBottom;
+  
+    for (const p of paragraphs) {
+      const lines = doc.splitTextToSize(p.length ? p : " ", contentWidth);
+  
+      for (const line of lines) {
+        if (y > bottomLimit) {
+          doc.addPage();
+          doc.setFont("NanumGothic", "normal");
+          doc.setFontSize(11);
+          y = marginTop;
+        }
+        doc.text(line, marginLeft, y);
+        y += lineHeight;
+      }
+      y += 2;
+    }
+  
     doc.save(filename);
   }
+
 
   // 강의 정리 노트 PDF 다운로드
   function downloadNotePDF() {
@@ -619,6 +650,7 @@
   </script>
 </body>
 </html>
+
 
 
 
