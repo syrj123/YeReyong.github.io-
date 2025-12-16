@@ -845,6 +845,285 @@
     doc.save(filename);
   }
 
+  // ✅ 문제지 PDF 전용 생성 함수
+  // - 문제 페이지: 정답 숨김 + 답안 박스 표시
+  // - 마지막 페이지: 정답 모아보기(Answer Key) 페이지 자동 추가
+  function createQuizPdfFromText(text, title, filename, opts = {}) {
+    const { jsPDF } = window.jspdf || {};
+    if (!jsPDF) {
+      alert("PDF 라이브러리를 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요.");
+      return;
+    }
+    if (!text || !text.trim()) {
+      alert("먼저 문제를 생성한 뒤에 PDF로 저장해 주세요!");
+      return;
+    }
+  
+    const fontBase64 = window.__KOR_FONT_BASE64__;
+    if (!fontBase64) {
+      alert("한글 폰트가 로드되지 않았습니다. NanumGothic.base64.js 로드를 확인해 주세요!");
+      return;
+    }
+  
+    // 옵션
+    const showAnswerBox = opts.showAnswerBox ?? true;     // 문제 밑에 "답안 박스" 표시 여부
+    const addAnswerPage = opts.addAnswerPage ?? true;     // 마지막에 정답 페이지 추가 여부
+    const answerPageTitle = opts.answerPageTitle ?? "정답 모아보기";
+    const answerBoxLines = opts.answerBoxLines ?? 3;      // 서술형 대비 답안 박스 줄 수(기본 3줄 느낌)
+  
+    const doc = new jsPDF({ orientation: "p", unit: "mm", format: "a4" });
+  
+    // ✅ 한글 폰트 등록
+    doc.addFileToVFS("NanumGothic.ttf", fontBase64);
+    doc.addFont("NanumGothic.ttf", "NanumGothic", "normal", "Identity-H");
+    doc.setFont("NanumGothic", "normal");
+  
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+  
+    const M = { L: 14, R: 14, T: 18, B: 18 };
+    const contentW = pageW - M.L - M.R;
+  
+    let y = M.T;
+  
+    const ensurePage = (need = 0) => {
+      if (y + need > pageH - M.B) {
+        doc.addPage();
+        y = M.T;
+      }
+    };
+  
+    const drawWrapped = (line, x, maxW, lineH) => {
+      const arr = doc.splitTextToSize(line, maxW);
+      for (const w of arr) {
+        ensurePage(lineH);
+        doc.text(w, x, y);
+        y += lineH;
+      }
+    };
+  
+    const drawHr = () => {
+      ensurePage(6);
+      doc.setDrawColor(220, 220, 230);
+      doc.setLineWidth(0.3);
+      doc.line(M.L, y, pageW - M.R, y);
+      y += 4;
+    };
+  
+    // ✅ 답안 박스(문제 페이지용) — 정답은 안 씀
+    const drawAnswerBox = () => {
+      if (!showAnswerBox) return;
+  
+      const boxX = M.L;
+      const boxW = contentW;
+      const lineH = 5.5;
+  
+      // 박스 높이: 제목줄 + 줄 n개
+      const boxH = 6 + answerBoxLines * lineH + 4;
+  
+      ensurePage(boxH + 6);
+  
+      doc.setDrawColor(210, 210, 220);
+      doc.setLineWidth(0.4);
+      doc.roundedRect(boxX, y, boxW, boxH, 2, 2);
+  
+      doc.setFontSize(10.3);
+      doc.setTextColor(90, 90, 90);
+      doc.text("답안 작성란", boxX + 3, y + 5);
+  
+      // 줄 그리기
+      doc.setDrawColor(225, 225, 235);
+      doc.setLineWidth(0.25);
+      for (let k = 1; k <= answerBoxLines; k++) {
+        const yy = y + 6 + k * lineH;
+        doc.line(boxX + 3, yy, boxX + boxW - 3, yy);
+      }
+  
+      y += boxH + 7;
+      doc.setTextColor(0, 0, 0);
+    };
+  
+    // =========================
+    // 1) 제목
+    // =========================
+    doc.setFontSize(18);
+    doc.setTextColor(20, 20, 20);
+    drawWrapped(title, M.L, contentW, 8);
+    y += 6;
+  
+    // =========================
+    // 2) 파싱 + 렌더링 (문제 페이지)
+    // =========================
+    const rawLines = text.replace(/\r\n/g, "\n").split("\n");
+  
+    // 정답 모으기
+    // answers = [{ qNum: "1", type:"객관식", answer:"..." }, ...]
+    const answers = [];
+  
+    let inQuestion = false;
+    let currentQ = null;     // { qNum, type }
+    let pendingAnswer = "";  // 정답 문자열 누적
+  
+    const flushQuestion = () => {
+      if (!inQuestion || !currentQ) return;
+  
+      // ✅ 답안 박스(문제 페이지에 표시)
+      drawAnswerBox();
+  
+      // ✅ 정답 저장(마지막 정답 페이지용)
+      answers.push({
+        qNum: String(currentQ.qNum),
+        type: currentQ.type || "",
+        answer: pendingAnswer.trim() || "(정답 없음)",
+      });
+  
+      // reset
+      inQuestion = false;
+      currentQ = null;
+      pendingAnswer = "";
+    };
+  
+    for (let i = 0; i < rawLines.length; i++) {
+      const line = (rawLines[i] || "").trimEnd();
+      const t = line.trim();
+  
+      if (!t) continue;
+  
+      // [Qn] (유형) 질문
+      const qMatch = t.match(/^\[Q(\d+)\]\s*(?:\(([^)]+)\))?\s*(.*)$/);
+      if (qMatch) {
+        // 이전 문제 마무리
+        flushQuestion();
+  
+        const qNum = qMatch[1];
+        const qType = (qMatch[2] || "").trim();
+        const qText = (qMatch[3] || "").trim();
+  
+        ensurePage(18);
+        y += 2;
+  
+        // 문제 헤더
+        doc.setFontSize(12.8);
+        doc.setTextColor(85, 55, 150);
+        const head = qType ? `Q${qNum}. (${qType})` : `Q${qNum}.`;
+        drawWrapped(head, M.L, contentW, 6.4);
+  
+        // 문제 본문
+        doc.setFontSize(11.2);
+        doc.setTextColor(20, 20, 20);
+        drawWrapped(qText, M.L + 2, contentW - 2, 6.0);
+  
+        y += 2.5;
+        doc.setTextColor(0, 0, 0);
+  
+        inQuestion = true;
+        currentQ = { qNum, type: qType };
+        pendingAnswer = "";
+        continue;
+      }
+  
+      // 보기 (1) (2) ...
+      const choiceMatch = t.match(/^\((\d+)\)\s*(.*)$/);
+      if (choiceMatch) {
+        ensurePage(7);
+        doc.setFontSize(10.8);
+        doc.setTextColor(15, 15, 15);
+  
+        const idx = choiceMatch[1];
+        const cText = choiceMatch[2] || "";
+        drawWrapped(`  ${idx}) ${cText}`, M.L + 8, contentW - 8, 5.4);
+  
+        y += 0.8;
+        doc.setTextColor(0, 0, 0);
+        continue;
+      }
+  
+      // 정답 라인 (문제 페이지에는 표시하지 않음, 저장만)
+      if (t.startsWith("정답:")) {
+        const a = t.replace(/^정답:\s*/, "").trim();
+        pendingAnswer += (pendingAnswer ? " / " : "") + a;
+        continue;
+      }
+  
+      // 기타 문장 (지문/설명 등) - 문제 본문으로 표시
+      ensurePage(7);
+      doc.setFontSize(10.8);
+      doc.setTextColor(30, 30, 30);
+      drawWrapped(t, M.L + 2, contentW - 2, 5.4);
+      y += 1.4;
+      doc.setTextColor(0, 0, 0);
+    }
+  
+    // 마지막 문제 처리
+    flushQuestion();
+  
+    // =========================
+    // 3) 정답 페이지(마지막에 따로)
+    // =========================
+    if (addAnswerPage) {
+      doc.addPage();
+      y = M.T;
+  
+      // 정답 페이지 제목
+      doc.setFontSize(16);
+      doc.setTextColor(20, 20, 20);
+      drawWrapped(answerPageTitle, M.L, contentW, 8);
+      y += 4;
+  
+      drawHr();
+  
+      // 표처럼 2열 느낌(문제번호/정답)
+      const col1W = 18; // Q 번호
+      const colGap = 4;
+      const col2X = M.L + col1W + colGap;
+      const col2W = contentW - col1W - colGap;
+  
+      for (const item of answers) {
+        ensurePage(10);
+  
+        // Q 번호
+        doc.setFontSize(11.5);
+        doc.setTextColor(85, 55, 150);
+        doc.text(`Q${item.qNum}`, M.L, y);
+  
+        // 정답 텍스트
+        doc.setFontSize(11);
+        doc.setTextColor(30, 30, 30);
+  
+        // (유형) 표시도 같이
+        const label = item.type ? `(${item.type}) ` : "";
+        const ansText = label + item.answer;
+  
+        const lines = doc.splitTextToSize(ansText, col2W);
+        // 첫 줄은 현재 y에, 이후 줄은 줄바꿈
+        doc.text(lines[0], col2X, y);
+  
+        // 다음 줄 처리
+        const lineH = 6.0;
+        for (let k = 1; k < lines.length; k++) {
+          y += lineH;
+          ensurePage(lineH);
+          doc.text(lines[k], col2X, y);
+        }
+  
+        y += 8;
+        doc.setTextColor(0, 0, 0);
+      }
+    }
+  
+    // =========================
+    // 4) 페이지 번호
+    // =========================
+    const pageCount = doc.getNumberOfPages();
+    for (let p = 1; p <= pageCount; p++) {
+      doc.setPage(p);
+      doc.setFontSize(9);
+      doc.setTextColor(140, 140, 140);
+      doc.text(`${p} / ${pageCount}`, pageW - M.R, pageH - 10, { align: "right" });
+    }
+  
+    doc.save(filename);
+  }
 
 
 
@@ -871,13 +1150,18 @@
     const title = `과탑의 비밀 노트 - ${subjectName} (문제지)`;
     const fileName = subjectName.replace(/\s+/g, "_") + "_문제지.pdf";
 
-    createPdfFromText(quizText, title, fileName);
+    createQuizPdfFromText(quizText, title, fileName, {
+      showAnswerBox: true,   // 문제 밑 답안 박스 표시
+      addAnswerPage: true,   // 마지막 정답 페이지 추가
+    });
+
   }
 
     
   </script>
 </body>
 </html>
+
 
 
 
