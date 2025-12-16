@@ -604,21 +604,31 @@
     // ===============================
     const cleanLine = (s) => {
       let t = (s || "").trim();
-  
+    
       // 마크다운 헤더 제거 (####, ### 등)
       t = t.replace(/^#{1,6}\s+/, "");
-  
-      // 앞쪽 불필요한 기호 제거 (탐지/표시 안정)
-      t = t.replace(/^•\s+/, "");
-  
-      // [DESC] 제거
-      t = t.replace(/^\[DESC\]\s*/, "");
-  
-      // "정의: 정의:" 같은 중복 제거
+    
+      // 앞쪽 장식 기호 제거(원하면 더 추가 가능)
+      t = t.replace(/^[▶■◆]\s+/, "");
+    
+      // [PART] / [SECTION] / [TERM] / [DESC] 같은 태그 제거 (여기가 핵심)
+      t = t.replace(/^\[(PART|SECTION|TERM|DESC)\]\s*/i, "");
+    
+      // [DEF] [FEAT] ... 태그가 앞에 남는 경우 제거
+      t = t.replace(/^\[(DEF|FEAT|EX|COMP|WARN|USE)\]\s*/i, "");
+    
+      // "- [DEF] ..." 형태도 혹시 일반문단으로 들어오면 제거
+      t = t.replace(/^-\s*\[(DEF|FEAT|EX|COMP|WARN|USE)\]\s*/i, "");
+    
+      // 불릿 중복 방지
+      t = t.replace(/^[•]\s+/, "");
+    
+      // "정의: 정의:" 같은 중복 라벨 정리
       t = t.replace(/^(정의|특징|예시|비교|주의|활용)\s*:\s*\1\s*:/, "$1:");
-  
+    
       return t;
     };
+
   
     // ===============================
     // ✅ 토큰(숫자/기호) 한 줄씩 떨어짐 방지 전처리
@@ -756,17 +766,21 @@
       const d = t.replace(/^#{1,6}\s+/, "").replace(/^•\s+/, "");
   
       // 1) PART
-      if (d.startsWith("## [PART]")) {
+      if (d.startsWith("## [PART]") || d.startsWith("[PART]")) {
         y += GAP.PART_BEFORE;
         ensurePage(12);
-  
+      
         const st = setStyle(STYLE.part);
-        const content = cleanLine(stripPrefix(d, "## [PART]"));
+      
+        const prefix = d.startsWith("[PART]") ? "[PART]" : "## [PART]";
+        const content = cleanLine(stripPrefix(d, prefix));
+      
         drawWrapped("■ " + content, st.x, contentW - (st.x - M.L), st.lh);
-  
+      
         y += GAP.PART_AFTER;
         continue;
       }
+
   
       // 2) SECTION
       if (d.startsWith("### [SECTION]") || d.startsWith("[SECTION]")) {
@@ -1161,6 +1175,7 @@
   </script>
 </body>
 </html>
+
 
 
 
