@@ -550,7 +550,7 @@
     document.getElementById("quizOutput").value = "";
   }
 
-  // 공통 PDF 생성 헬퍼 함수 (✅ 한글 폰트 임베드)
+  // 공통 PDF 생성 헬퍼 함수 (✅ 한글 폰트 임베드, 태그 숨김)
   function createPdfFromText(text, title, filename) {
     const { jsPDF } = window.jspdf || {};
     if (!jsPDF) {
@@ -598,38 +598,41 @@
         y += lineH;
       }
     };
-
+  
+    // ===============================
+    // 태그/마크다운 정리 유틸
+    // ===============================
     const cleanLine = (s) => {
       let t = (s || "").trim();
-    
+  
       // 마크다운 헤더 제거 (####, ### 등)
       t = t.replace(/^#{1,6}\s+/, "");
-    
-      // 불필요한 태그/기호 정리
-      t = t.replace(/^•\s+/, "");           // 앞에 붙은 • 제거 (중복 방지)
-    
+  
+      // 앞쪽 불필요한 기호 제거
+      t = t.replace(/^•\s+/, "");
+  
       // [DESC] 제거
       t = t.replace(/^\[DESC\]\s*/, "");
-    
-      // "정의: 정의:" 같은 중복 라벨 정리
+  
+      // "정의: 정의:" 같은 중복 제거
       t = t.replace(/^(정의|특징|예시|비교|주의|활용)\s*:\s*\1\s*:/, "$1:");
-    
+  
       return t;
     };
-    
-    
+  
     // ====== 문서 제목 ======
     doc.setFontSize(18);
     doc.setTextColor(20, 20, 20);
     drawWrapped(title, M.L, contentW, 8);
     y += 6;
   
-    // ====== 태그 파서 ======
+    // ====== 본문 파싱 ======
     const rawLines = text.replace(/\r\n/g, "\n").split("\n");
   
-    const stripPrefix = (s, prefix) => s.startsWith(prefix) ? s.slice(prefix.length).trim() : s.trim();
+    const stripPrefix = (s, prefix) =>
+      s.startsWith(prefix) ? s.slice(prefix.length).trim() : s.trim();
   
-    // 여백/줄간격 설정
+    // 여백 설정
     const GAP = {
       PART_BEFORE: 7,
       PART_AFTER: 4,
@@ -641,7 +644,7 @@
       BULLET_AFTER: 1.5,
     };
   
-    // 공통 스타일 프리셋 (색은 너무 화려하지 않게)
+    // 스타일 프리셋
     const STYLE = {
       part:   { size: 14.8, color: [85, 55, 150], lh: 7.1, x: M.L },
       section:{ size: 12.6, color: [70, 70, 120], lh: 6.4, x: M.L + 2 },
@@ -652,7 +655,6 @@
       plain:  { size: 10.8, color: [15, 15, 15],  lh: 5.4, x: M.L + 6 },
     };
   
-    // 키 태그 매핑
     const KEY_LABEL = {
       "[DEF]": "정의",
       "[FEAT]": "특징",
@@ -663,19 +665,9 @@
     };
   
     const setStyle = (st) => {
-      doc.setFont("NanumGothic", "normal");
       doc.setFontSize(st.size);
       doc.setTextColor(st.color[0], st.color[1], st.color[2]);
       return st;
-    };
-  
-    // (선택) 가벼운 구분선
-    const drawDivider = () => {
-      ensurePage(4);
-      doc.setDrawColor(220, 220, 230);
-      doc.setLineWidth(0.3);
-      doc.line(M.L, y, pageW - M.R, y);
-      y += 3.5;
     };
   
     for (let i = 0; i < rawLines.length; i++) {
@@ -687,91 +679,86 @@
         continue;
       }
   
+      // 🔍 탐지용 문자열 (마크다운/불릿 제거)
+      const d = t
+        .replace(/^#{1,6}\s+/, "")
+        .replace(/^•\s+/, "");
+  
       // 1) PART
-      if (t.startsWith("## [PART]")) {
+      if (d.startsWith("## [PART]")) {
         y += GAP.PART_BEFORE;
         ensurePage(12);
   
         const st = setStyle(STYLE.part);
-        const content = stripPrefix(t, "## [PART]");
+        const content = cleanLine(stripPrefix(d, "## [PART]"));
         drawWrapped("■ " + content, st.x, contentW - (st.x - M.L), st.lh);
   
-        doc.setTextColor(0, 0, 0);
         y += GAP.PART_AFTER;
-  
-        // 파트 시작 구분선(선택)
-        drawDivider();
         continue;
       }
   
       // 2) SECTION
-      if (t.startsWith("### [SECTION]")) {
+      if (d.startsWith("### [SECTION]") || d.startsWith("[SECTION]")) {
         y += GAP.SECTION_BEFORE;
         ensurePage(10);
   
         const st = setStyle(STYLE.section);
-        const content = stripPrefix(t, "### [SECTION]");
+        const prefix = d.startsWith("[SECTION]") ? "[SECTION]" : "### [SECTION]";
+        const content = cleanLine(stripPrefix(d, prefix));
         drawWrapped("▶ " + content, st.x, contentW - (st.x - M.L), st.lh);
   
-        doc.setTextColor(0, 0, 0);
         y += GAP.SECTION_AFTER;
         continue;
       }
   
       // 3) TERM
-      if (t.startsWith("◆ [TERM]")) {
+      if (d.startsWith("◆ [TERM]")) {
         y += GAP.TERM_BEFORE;
         ensurePage(9);
   
         const st = setStyle(STYLE.term);
-        const content = stripPrefix(t, "◆ [TERM]");
+        const content = cleanLine(stripPrefix(d, "◆ [TERM]"));
         drawWrapped("◆ " + content, st.x, contentW - (st.x - M.L), st.lh);
   
-        doc.setTextColor(0, 0, 0);
         y += GAP.TERM_AFTER;
         continue;
       }
   
-      // 4) KEY LINES: - [DEF] ... / - [FEAT] ...
-      const keyMatch = t.match(/^-\s*(\[[A-Z]+\])\s*(.*)$/);
+      // 4) KEY (정의/특징/예시...)
+      const keyMatch = d.match(/^-\s*(\[[A-Z]+\])\s*(.*)$/);
       if (keyMatch && KEY_LABEL[keyMatch[1]]) {
         ensurePage(8);
+  
         const st = setStyle(STYLE.key);
         const label = KEY_LABEL[keyMatch[1]];
-        const content = keyMatch[2]?.trim() || "";
+        const content = cleanLine(keyMatch[2] || "");
   
-        // "▸ 정의: ..." 형태로 통일
         drawWrapped(`▸ ${label}: ${content}`, st.x, contentW - (st.x - M.L), st.lh);
-  
-        doc.setTextColor(0, 0, 0);
         y += 1.8;
         continue;
       }
   
       // 5) DESC
-      if (t.startsWith("[DESC]")) {
+      if (d.startsWith("[DESC]")) {
         const st = setStyle(STYLE.desc);
-        const content = stripPrefix(t, "[DESC]");
+        const content = cleanLine(stripPrefix(d, "[DESC]"));
         drawWrapped(content, st.x, contentW - (st.x - M.L), st.lh);
-        doc.setTextColor(0, 0, 0);
         y += GAP.PARA_AFTER;
         continue;
       }
   
-      // 6) 일반 목록(태그 없는 -, *, •)
-      if (/^[*•-]\s+/.test(t)) {
+      // 6) 일반 목록
+      if (/^[*•-]\s+/.test(d)) {
         const st = setStyle(STYLE.bullet);
-        const content = t.replace(/^[*•-]\s+/, "").trim();
+        const content = cleanLine(d.replace(/^[*•-]\s+/, ""));
         drawWrapped("• " + content, st.x, contentW - (st.x - M.L), st.lh);
-        doc.setTextColor(0, 0, 0);
         y += GAP.BULLET_AFTER;
         continue;
       }
   
-      // 7) 나머지(보험)
+      // 7) 일반 문단
       const st = setStyle(STYLE.plain);
-      drawWrapped(t, st.x, contentW - (st.x - M.L), st.lh);
-      doc.setTextColor(0, 0, 0);
+      drawWrapped(cleanLine(t), st.x, contentW - (st.x - M.L), st.lh);
       y += 2.2;
     }
   
@@ -786,6 +773,7 @@
   
     doc.save(filename);
   }
+
 
 
 
@@ -819,6 +807,7 @@
   </script>
 </body>
 </html>
+
 
 
 
