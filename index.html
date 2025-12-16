@@ -549,8 +549,8 @@
     document.getElementById("noteOutput").value = "";
     document.getElementById("quizOutput").value = "";
   }
-
-  // 공통 PDF 생성 헬퍼 함수 (✅ 한글 폰트 임베드, 태그 숨김)
+  
+  // 공통 PDF 생성 헬퍼 함수 (✅ 한글 폰트 임베드, 태그 숨김, 토큰 줄 합치기)
   function createPdfFromText(text, title, filename) {
     const { jsPDF } = window.jspdf || {};
     if (!jsPDF) {
@@ -608,7 +608,7 @@
       // 마크다운 헤더 제거 (####, ### 등)
       t = t.replace(/^#{1,6}\s+/, "");
   
-      // 앞쪽 불필요한 기호 제거
+      // 앞쪽 불필요한 기호 제거 (탐지/표시 안정)
       t = t.replace(/^•\s+/, "");
   
       // [DESC] 제거
@@ -620,14 +620,85 @@
       return t;
     };
   
+    // ===============================
+    // ✅ 토큰(숫자/기호) 한 줄씩 떨어짐 방지 전처리
+    // ===============================
+    const normalizeLines = (lines) => {
+      const out = [];
+      let buf = "";
+  
+      const flush = () => {
+        if (buf.trim()) out.push(buf.trim());
+        buf = "";
+      };
+  
+      // 태그 라인은 절대 합치면 안 됨
+      const isTagLine = (s) => {
+        const t = s.trim();
+        return (
+          t.startsWith("## [PART]") ||
+          t.startsWith("### [SECTION]") ||
+          t.startsWith("[SECTION]") ||
+          t.startsWith("◆ [TERM]") ||
+          t.startsWith("[DESC]") ||
+          /^-\s*\[[A-Z]+\]/.test(t)
+        );
+      };
+  
+      // 토큰 라인: 아주 짧은 줄(숫자/기호/짧은 문자열)만
+      const isTokenLine = (s) => {
+        const t = s.trim();
+        if (!t) return false;
+        if (t.length > 6) return false; // 너무 길면 일반 문장
+        // 숫자/영문/한글/기호 몇 개로만 구성된 짧은 라인
+        return /^[0-9A-Za-z가-힣(),.=+\-*/?:]+$/.test(t);
+      };
+  
+      for (const line of lines) {
+        const t = (line || "").trimEnd();
+        const tt = t.trim();
+  
+        // 빈 줄: 버퍼 flush + 빈 줄 유지
+        if (!tt) {
+          flush();
+          out.push("");
+          continue;
+        }
+  
+        // 마크다운/불릿 제거한 탐지용
+        const d = tt.replace(/^#{1,6}\s+/, "").replace(/^•\s+/, "");
+  
+        // 태그면 flush 후 그대로
+        if (isTagLine(d)) {
+          flush();
+          out.push(d);
+          continue;
+        }
+  
+        // 토큰 라인이면 buf에 합치기
+        if (isTokenLine(d)) {
+          buf = buf ? (buf + " " + d) : d;
+          continue;
+        }
+  
+        // 일반 문장: 기존 buf flush 후 추가
+        flush();
+        out.push(t);
+      }
+  
+      flush();
+      return out;
+    };
+  
     // ====== 문서 제목 ======
     doc.setFontSize(18);
     doc.setTextColor(20, 20, 20);
     drawWrapped(title, M.L, contentW, 8);
     y += 6;
   
-    // ====== 본문 파싱 ======
+    // ====== 라인 분해 + 전처리 ======
     const rawLines = text.replace(/\r\n/g, "\n").split("\n");
+    const normalizedLines = normalizeLines(rawLines);
   
     const stripPrefix = (s, prefix) =>
       s.startsWith(prefix) ? s.slice(prefix.length).trim() : s.trim();
@@ -665,13 +736,15 @@
     };
   
     const setStyle = (st) => {
+      doc.setFont("NanumGothic", "normal");
       doc.setFontSize(st.size);
       doc.setTextColor(st.color[0], st.color[1], st.color[2]);
       return st;
     };
   
-    for (let i = 0; i < rawLines.length; i++) {
-      const t0 = (rawLines[i] || "").trimEnd();
+    // ====== 렌더링 ======
+    for (let i = 0; i < normalizedLines.length; i++) {
+      const t0 = (normalizedLines[i] || "").trimEnd();
       const t = t0.trim();
   
       if (!t) {
@@ -679,10 +752,8 @@
         continue;
       }
   
-      // 🔍 탐지용 문자열 (마크다운/불릿 제거)
-      const d = t
-        .replace(/^#{1,6}\s+/, "")
-        .replace(/^•\s+/, "");
+      // 탐지용 문자열(마크다운/불릿 제거)
+      const d = t.replace(/^#{1,6}\s+/, "").replace(/^•\s+/, "");
   
       // 1) PART
       if (d.startsWith("## [PART]")) {
@@ -724,7 +795,7 @@
         continue;
       }
   
-      // 4) KEY (정의/특징/예시...)
+      // 4) KEY
       const keyMatch = d.match(/^-\s*(\[[A-Z]+\])\s*(.*)$/);
       if (keyMatch && KEY_LABEL[keyMatch[1]]) {
         ensurePage(8);
@@ -807,6 +878,7 @@
   </script>
 </body>
 </html>
+
 
 
 
